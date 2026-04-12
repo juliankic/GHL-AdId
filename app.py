@@ -1,39 +1,28 @@
 import asyncio
 import requests
 import re
-import sqlite3
-import shutil
-import os
+import browser_cookie3
 from playwright.async_api import async_playwright
 
 # ── CONFIGURACIÓN ──────────────────────────────────────────
 GHL_TOKEN = "pit-08166086-17f2-4dcc-88d2-8f065adae15c"
 GHL_LOCATION_ID = "6VJ6jJ4IxhkiJLzHZUcx"
 META_BS_URL = "https://business.facebook.com/latest/inbox/messenger"
-COOKIES_FILE = r"C:\xtrategy-adid\Cookies"
 
 # ── Extraer cookies de Facebook desde Chrome ───────────────
 def get_facebook_cookies():
-    tmp = r"C:\xtrategy-adid\Cookies_tmp"
-    shutil.copy2(COOKIES_FILE, tmp)
-    conn = sqlite3.connect(tmp)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT name, value, host_key, path, is_secure, expires_utc
-        FROM cookies
-        WHERE host_key LIKE '%facebook.com%' OR host_key LIKE '%business.facebook.com%'
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-    os.remove(tmp)
+    cj = browser_cookie3.chrome(
+        domain_name=".facebook.com",
+        cookie_file=r"C:\Users\JC\AppData\Local\Google\Chrome\User Data\Profile 20\Network\Cookies"
+    )
     cookies = []
-    for row in rows:
+    for c in cj:
         cookies.append({
-            "name": row[0],
-            "value": row[1],
-            "domain": row[2],
-            "path": row[3],
-            "secure": bool(row[4]),
+            "name": c.name,
+            "value": c.value,
+            "domain": c.domain,
+            "path": c.path,
+            "secure": c.secure,
         })
     return cookies
 
