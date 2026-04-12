@@ -18,22 +18,28 @@ def get_contacts_without_adid():
         "Version": "2021-07-28"
     }
     all_contacts = []
-    page = 1
+    next_page_url = None
+    params = {
+        "locationId": GHL_LOCATION_ID,
+        "limit": 100
+    }
+
     while True:
-        params = {
-            "locationId": GHL_LOCATION_ID,
-            "limit": 100,
-            "page": page
-        }
-        response = requests.get(url, headers=headers, params=params)
+        if next_page_url:
+            response = requests.get(next_page_url, headers=headers)
+        else:
+            response = requests.get(url, headers=headers, params=params)
+        
         data = response.json()
         contacts = data.get("contacts", [])
         if not contacts:
             break
         all_contacts.extend(contacts)
-        if len(contacts) < 100:
+        print(f"  Obtenidos: {len(all_contacts)} contactos...")
+        
+        next_page_url = data.get("meta", {}).get("nextPageUrl")
+        if not next_page_url:
             break
-        page += 1
 
     without_adid = []
     for c in all_contacts:
