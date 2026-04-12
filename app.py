@@ -7,6 +7,8 @@ from playwright.async_api import async_playwright
 GHL_TOKEN = "pit-08166086-17f2-4dcc-88d2-8f065adae15c"
 GHL_LOCATION_ID = "6VJ6jJ4IxhkiJLzHZUcx"
 META_BS_URL = "https://business.facebook.com/latest/inbox/messenger"
+LEAD_SOURCE_FIELD_ID = "iUwcdfMseINgp70KbIsZ"
+AD_ID_FIELD_ID = "yDJQa5wnMZBKQRjvvIuA"
 
 # ── GHL: obtener contactos Meta Ads sin ad_id ──────────────
 def get_contacts_without_adid():
@@ -35,19 +37,17 @@ def get_contacts_without_adid():
 
     without_adid = []
     for c in all_contacts:
-        # Filtrar solo Meta Ads
-        lead_source = c.get("source", "") or ""
         custom_fields = c.get("customFields", [])
-        
-        # Buscar lead_source en customFields también
-        lead_source_field = next((f for f in custom_fields if "lead_source" in f.get("id", "").lower() or "lead_source" in f.get("key", "").lower()), None)
-        if lead_source_field:
-            lead_source = lead_source_field.get("value", "") or ""
 
-        is_meta_ads = "meta" in lead_source.lower() or "meta_ads" in lead_source.lower()
-        
+        # Verificar lead_source = Meta Ads
+        lead_source_field = next((f for f in custom_fields if f.get("id") == LEAD_SOURCE_FIELD_ID), None)
+        lead_source_value = lead_source_field.get("value", []) if lead_source_field else []
+        if isinstance(lead_source_value, str):
+            lead_source_value = [lead_source_value]
+        is_meta_ads = any("meta" in str(v).lower() for v in lead_source_value)
+
         # Verificar ad_id vacío
-        ad_id_field = next((f for f in custom_fields if "ad_id" in f.get("id", "").lower() or "ad_id" in f.get("key", "").lower()), None)
+        ad_id_field = next((f for f in custom_fields if f.get("id") == AD_ID_FIELD_ID), None)
         has_adid = ad_id_field and ad_id_field.get("value")
 
         if is_meta_ads and not has_adid:
