@@ -12,47 +12,51 @@ AD_ID_FIELD_ID = "yDJQa5wnMZBKQRjvvIuA"
 
 # ── GHL: obtener contactos Meta Ads sin ad_id ──────────────
 def get_contacts_without_adid():
-    url = "https://services.leadconnectorhq.com/contacts/"
+    base_url = "https://services.leadconnectorhq.com/contacts/"
     headers = {
         "Authorization": f"Bearer {GHL_TOKEN}",
         "Version": "2021-07-28"
     }
     all_contacts = []
-    next_page_url = None
-    params = {
-        "locationId": GHL_LOCATION_ID,
-        "limit": 100
-    }
+    start_after = None
+    start_after_id = None
 
     while True:
-        if next_page_url:
-            response = requests.get(next_page_url, headers=headers)
-        else:
-            response = requests.get(url, headers=headers, params=params)
-        
+        params = {
+            "locationId": GHL_LOCATION_ID,
+            "limit": 100
+        }
+        if start_after:
+            params["startAfter"] = start_after
+            params["startAfterId"] = start_after_id
+
+        response = requests.get(base_url, headers=headers, params=params)
         data = response.json()
         contacts = data.get("contacts", [])
         if not contacts:
             break
         all_contacts.extend(contacts)
         print(f"  Obtenidos: {len(all_contacts)} contactos...")
-        
-        next_page_url = data.get("meta", {}).get("nextPageUrl")
-        if not next_page_url:
+
+        meta = data.get("meta", {})
+        next_page = meta.get("nextPage", "")
+        if not next_page:
+            break
+        start_after = meta.get("startAfter")
+        start_after_id = meta.get("startAfterId")
+        if not start_after:
             break
 
     without_adid = []
     for c in all_contacts:
         custom_fields = c.get("customFields", [])
 
-        # Verificar lead_source = Meta Ads
         lead_source_field = next((f for f in custom_fields if f.get("id") == LEAD_SOURCE_FIELD_ID), None)
         lead_source_value = lead_source_field.get("value", []) if lead_source_field else []
         if isinstance(lead_source_value, str):
             lead_source_value = [lead_source_value]
         is_meta_ads = any("meta" in str(v).lower() for v in lead_source_value)
 
-        # Verificar ad_id vacío
         ad_id_field = next((f for f in custom_fields if f.get("id") == AD_ID_FIELD_ID), None)
         has_adid = ad_id_field and ad_id_field.get("value")
 
