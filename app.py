@@ -1,18 +1,16 @@
 import asyncio
 import requests
+import re
 from playwright.async_api import async_playwright
 
 # ── CONFIGURACIÓN ──────────────────────────────────────────
 GHL_TOKEN = "pit-08166086-17f2-4dcc-88d2-8f065adae15c"
 GHL_LOCATION_ID = "6VJ6jJ4IxhkiJLzHZUcx"
-CHROME_PATH = r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-CHROME_USER_DATA = r"C:\Users\JC\AppData\Local\Google\Chrome\User Data"
-CHROME_PROFILE = "Default"
 META_BS_URL = "https://business.facebook.com/latest/inbox/messenger"
 
 # ── GHL: obtener contactos sin ad_id ───────────────────────
 def get_contacts_without_adid():
-    url = f"https://services.leadconnectorhq.com/contacts/"
+    url = "https://services.leadconnectorhq.com/contacts/"
     headers = {
         "Authorization": f"Bearer {GHL_TOKEN}",
         "Version": "2021-07-28"
@@ -24,7 +22,7 @@ def get_contacts_without_adid():
     response = requests.get(url, headers=headers, params=params)
     data = response.json()
     contacts = data.get("contacts", [])
-    
+
     without_adid = []
     for c in contacts:
         custom_fields = c.get("customFields", [])
@@ -57,24 +55,23 @@ async def get_adid_from_meta(page, name):
     try:
         await page.goto(META_BS_URL, wait_until="domcontentloaded")
         await page.wait_for_timeout(3000)
-        
-        # Buscar en la barra de búsqueda
+
+        # Buscar contacto
         search = page.locator('input[placeholder*="Search"], input[type="search"]').first
         await search.click()
         await search.fill(name)
         await page.wait_for_timeout(2000)
-        
-        # Click en primera persona encontrada
+
+        # Click en primera persona
         person = page.locator('text=' + name).first
         await person.click()
-        await page.wait_for_timeout(2000)
-        
-        # Extraer ad_id del HTML completo
+        await page.wait_for_timeout(3000)
+
+        # Extraer ad_id del HTML
         html = await page.content()
-        import re
         matches = re.findall(r'ad_id\.(\d+)', html)
         unique = list(dict.fromkeys(matches))
-        
+
         if unique:
             print(f"  ✓ {name} → {unique[0]}")
             return unique[0]
@@ -92,29 +89,25 @@ async def main():
     print(f"Encontrados: {len(contacts)} contactos\n")
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch_persistent_context(
-            user_data_dir=CHROME_USER_DATA,
-            executable_path=CHROME_PATH,
-            headless=False,
-            args=["--profile-directory=" + CHROME_PROFILE]
-        )
-        page = browser.pages[0] if browser.pages else await browser.new_page()
+        browser = await p.chromium.connect_over_cdp("http://localhost:9222")
+        context = browser.contexts[0]
+        page = context.pages[0] if context.pages else await context.new_page()
 
         for contact in contacts:
             name = contact["name"]
             contact_id = contact["id"]
             print(f"Procesando: {name}")
-            
+
             ad_id = await get_adid_from_meta(page, name)
-            
+
             if ad_id:
                 status = save_adid_to_ghl(contact_id, ad_id)
                 print(f"  → Guardado en GHL (status {status})")
-            
+
             await page.wait_for_timeout(1000)
 
         await browser.close()
-    
+
     print("\n✅ Proceso completado")
 
 if __name__ == "__main__":
