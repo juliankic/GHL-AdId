@@ -1,30 +1,12 @@
 import asyncio
 import requests
 import re
-import browser_cookie3
 from playwright.async_api import async_playwright
 
 # ── CONFIGURACIÓN ──────────────────────────────────────────
 GHL_TOKEN = "pit-08166086-17f2-4dcc-88d2-8f065adae15c"
 GHL_LOCATION_ID = "6VJ6jJ4IxhkiJLzHZUcx"
 META_BS_URL = "https://business.facebook.com/latest/inbox/messenger"
-
-# ── Extraer cookies de Facebook desde Chrome ───────────────
-def get_facebook_cookies():
-    cj = browser_cookie3.chrome(
-        domain_name=".facebook.com",
-        cookie_file=r"C:\Users\JC\AppData\Local\Google\Chrome\User Data\Profile 20\Network\Cookies"
-    )
-    cookies = []
-    for c in cj:
-        cookies.append({
-            "name": c.name,
-            "value": c.value,
-            "domain": c.domain,
-            "path": c.path,
-            "secure": c.secure,
-        })
-    return cookies
 
 # ── GHL: obtener contactos sin ad_id ───────────────────────
 def get_contacts_without_adid():
@@ -98,19 +80,19 @@ async def get_adid_from_meta(page, name):
 
 # ── MAIN ───────────────────────────────────────────────────
 async def main():
-    print("Extrayendo cookies de Facebook...")
-    cookies = get_facebook_cookies()
-    print(f"Cookies encontradas: {len(cookies)}")
-
     print("Obteniendo contactos sin ad_id desde GHL...")
     contacts = get_contacts_without_adid()
     print(f"Contactos sin ad_id: {len(contacts)}\n")
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context()
-        await context.add_cookies(cookies)
-        page = await context.new_page()
+        browser = await p.chromium.launch_persistent_context(
+            user_data_dir=r"C:\Users\JC\AppData\Local\Google\Chrome\User Data\Profile 20",
+            executable_path=r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            headless=False,
+            channel="chrome",
+            args=["--profile-directory=Profile 20"]
+        )
+        page = browser.pages[0] if browser.pages else await browser.new_page()
 
         for contact in contacts:
             name = contact["name"]
