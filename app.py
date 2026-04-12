@@ -6,9 +6,10 @@ from playwright.async_api import async_playwright
 # ── CONFIGURACIÓN ──────────────────────────────────────────
 GHL_TOKEN = "pit-08166086-17f2-4dcc-88d2-8f065adae15c"
 GHL_LOCATION_ID = "6VJ6jJ4IxhkiJLzHZUcx"
+SMART_LIST_ID = "jKXOXcMONZ567Rcn47DG"
 META_BS_URL = "https://business.facebook.com/latest/inbox/messenger"
 
-# ── GHL: obtener contactos sin ad_id ───────────────────────
+# ── GHL: obtener contactos de Smart List ───────────────────
 def get_contacts_without_adid():
     url = "https://services.leadconnectorhq.com/contacts/"
     headers = {
@@ -17,21 +18,14 @@ def get_contacts_without_adid():
     }
     params = {
         "locationId": GHL_LOCATION_ID,
+        "smartListId": SMART_LIST_ID,
         "limit": 100
     }
     response = requests.get(url, headers=headers, params=params)
     data = response.json()
     contacts = data.get("contacts", [])
-    without_adid = []
-    for c in contacts:
-        custom_fields = c.get("customFields", [])
-        has_adid = any(f.get("value") for f in custom_fields if "ad" in f.get("id", "").lower())
-        if not has_adid:
-            without_adid.append({
-                "id": c["id"],
-                "name": f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()
-            })
-    return without_adid
+    print(f"Contactos en Smart List: {len(contacts)}")
+    return [{"id": c["id"], "name": f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()} for c in contacts]
 
 # ── GHL: guardar ad_id ─────────────────────────────────────
 def save_adid_to_ghl(contact_id, ad_id):
@@ -80,9 +74,9 @@ async def get_adid_from_meta(page, name):
 
 # ── MAIN ───────────────────────────────────────────────────
 async def main():
-    print("Obteniendo contactos sin ad_id desde GHL...")
+    print("Obteniendo contactos de Smart List...")
     contacts = get_contacts_without_adid()
-    print(f"Contactos sin ad_id: {len(contacts)}\n")
+    print(f"Total a procesar: {len(contacts)}\n")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch_persistent_context(
