@@ -77,42 +77,33 @@ def save_adid_to_ghl(contact_id, ad_id):
 # ── META BS: buscar ad_id por nombre ──────────────────────
 async def get_adid_from_meta(page, name):
     try:
-        # Intentar con nombre completo y luego con primer nombre
-        first_name = name.split()[0]
-        search_terms = [name, first_name]
+        await page.goto(META_BS_URL, wait_until="domcontentloaded")
+        await page.wait_for_timeout(3000)
 
-        for search_term in search_terms:
-            await page.goto(META_BS_URL, wait_until="domcontentloaded")
+        search = page.locator('input[placeholder*="Search"], input[type="search"]').first
+        await search.click()
+        await search.fill(name)
+        await page.wait_for_timeout(2000)
+
+        # Solo buscar coincidencia exacta del nombre completo
+        try:
+            person = page.locator(f'text="{name}"').first
+            await person.click(timeout=5000)
             await page.wait_for_timeout(3000)
+        except:
+            print(f"  ✗ {name} → no encontrado en Meta BS")
+            return None
 
-            search = page.locator('input[placeholder*="Search"], input[type="search"]').first
-            await search.click()
-            await search.fill(search_term)
-            await page.wait_for_timeout(2000)
+        html = await page.content()
+        matches = re.findall(r'ad_id\.(\d+)', html)
+        unique = list(dict.fromkeys(matches))
 
-            # Intentar click en resultado
-            try:
-                person = page.locator(f'text="{name}"').first
-                await person.click(timeout=3000)
-                await page.wait_for_timeout(3000)
-            except:
-                try:
-                    person = page.locator(f'text="{first_name}"').first
-                    await person.click(timeout=3000)
-                    await page.wait_for_timeout(3000)
-                except:
-                    continue
-
-            html = await page.content()
-            matches = re.findall(r'ad_id\.(\d+)', html)
-            unique = list(dict.fromkeys(matches))
-
-            if unique:
-                print(f"  ✓ {name} → {unique[0]}")
-                return unique[0]
-
-        print(f"  ✗ {name} → sin ad_id")
-        return None
+        if unique:
+            print(f"  ✓ {name} → {unique[0]}")
+            return unique[0]
+        else:
+            print(f"  ✗ {name} → sin ad_id")
+            return None
     except Exception as e:
         print(f"  ⚠ {name} → error: {e}")
         return None
