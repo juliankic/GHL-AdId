@@ -6,26 +6,46 @@ from playwright.async_api import async_playwright
 # ── CONFIGURACIÓN ──────────────────────────────────────────
 GHL_TOKEN = "pit-08166086-17f2-4dcc-88d2-8f065adae15c"
 GHL_LOCATION_ID = "6VJ6jJ4IxhkiJLzHZUcx"
-SMART_LIST_ID = "jKXOXcMONZ567Rcn47DG"
 META_BS_URL = "https://business.facebook.com/latest/inbox/messenger"
 
-# ── GHL: obtener contactos de Smart List ───────────────────
+# ── GHL: obtener contactos sin ad_id ───────────────────────
 def get_contacts_without_adid():
     url = "https://services.leadconnectorhq.com/contacts/"
     headers = {
         "Authorization": f"Bearer {GHL_TOKEN}",
         "Version": "2021-07-28"
     }
-    params = {
-        "locationId": GHL_LOCATION_ID,
-        "smartListId": SMART_LIST_ID,
-        "limit": 100
-    }
-    response = requests.get(url, headers=headers, params=params)
-    data = response.json()
-    contacts = data.get("contacts", [])
-    print(f"Contactos en Smart List: {len(contacts)}")
-    return [{"id": c["id"], "name": f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()} for c in contacts]
+    all_contacts = []
+    page = 1
+    while True:
+        params = {
+            "locationId": GHL_LOCATION_ID,
+            "limit": 100,
+            "page": page
+        }
+        response = requests.get(url, headers=headers, params=params)
+        data = response.json()
+        contacts = data.get("contacts", [])
+        if not contacts:
+            break
+        all_contacts.extend(contacts)
+        if len(contacts) < 100:
+            break
+        page += 1
+
+    without_adid = []
+    for c in all_contacts:
+        custom_fields = c.get("customFields", [])
+        ad_id_field = next((f for f in custom_fields if "ad_id" in f.get("id", "").lower() or "ad_id" in f.get("key", "").lower()), None)
+        has_adid = ad_id_field and ad_id_field.get("value")
+        if not has_adid:
+            without_adid.append({
+                "id": c["id"],
+                "name": f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()
+            })
+
+    print(f"Total contactos: {len(all_contacts)} | Sin ad_id: {len(without_adid)}")
+    return without_adid
 
 # ── GHL: guardar ad_id ─────────────────────────────────────
 def save_adid_to_ghl(contact_id, ad_id):
@@ -74,7 +94,7 @@ async def get_adid_from_meta(page, name):
 
 # ── MAIN ───────────────────────────────────────────────────
 async def main():
-    print("Obteniendo contactos de Smart List...")
+    print("Obteniendo contactos sin ad_id desde GHL...")
     contacts = get_contacts_without_adid()
     print(f"Total a procesar: {len(contacts)}\n")
 
