@@ -10,7 +10,6 @@ META_BS_URL = "https://business.facebook.com/latest/inbox/messenger"
 LEAD_SOURCE_FIELD_ID = "iUwcdfMseINgp70KbIsZ"
 AD_ID_FIELD_ID = "yDJQa5wnMZBKQRjvvIuA"
 
-# ── GHL: obtener contactos Meta Ads sin ad_id ──────────────
 def get_contacts_without_adid():
     base_url = "https://services.leadconnectorhq.com/contacts/"
     headers = {
@@ -62,7 +61,6 @@ def get_contacts_without_adid():
     print("Total: " + str(len(all_contacts)) + " | Meta Ads sin ad_id: " + str(len(without_adid)))
     return without_adid
 
-# ── GHL: guardar ad_id ─────────────────────────────────────
 def save_adid_to_ghl(contact_id, ad_id):
     url = "https://services.leadconnectorhq.com/contacts/" + contact_id
     headers = {
@@ -74,7 +72,6 @@ def save_adid_to_ghl(contact_id, ad_id):
     response = requests.put(url, headers=headers, json=payload)
     return response.status_code
 
-# ── META BS: buscar ad_id por nombre ──────────────────────
 async def get_adid_from_meta(page, name):
     try:
         await page.goto(META_BS_URL, wait_until="domcontentloaded")
@@ -91,20 +88,24 @@ async def get_adid_from_meta(page, name):
         box = await page.evaluate("""
             (firstName) => {
                 const allDivs = Array.from(document.querySelectorAll('div'));
-                const match = allDivs.find(el =>
-                    el.children.length === 0 &&
-                    el.textContent.trim().toLowerCase().includes(firstName) &&
-                    el.getBoundingClientRect().width > 50
-                );
-                if (match) {
-                    const rect = match.getBoundingClientRect();
-                    return {
-                        x: rect.x + rect.width / 2,
-                        y: rect.y + rect.height / 2,
-                        text: match.textContent.trim()
-                    };
-                }
-                return null;
+                const candidates = allDivs.filter(el => {
+                    if (el.children.length !== 0) return false;
+                    const text = el.textContent.trim().toLowerCase();
+                    if (!text.includes(firstName)) return false;
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width < 50 || rect.width > 400) return false;
+                    if (rect.x > 450) return false;
+                    if (rect.y < 100) return false;
+                    return true;
+                });
+                if (candidates.length === 0) return null;
+                const match = candidates[0];
+                const rect = match.getBoundingClientRect();
+                return {
+                    x: rect.x + rect.width / 2,
+                    y: rect.y + rect.height / 2,
+                    text: match.textContent.trim()
+                };
             }
         """, first_name)
 
@@ -114,15 +115,11 @@ async def get_adid_from_meta(page, name):
 
         print("  DEBUG click en: '" + str(box['text']) + "' coords=(" + str(round(box['x'])) + ", " + str(round(box['y'])) + ")")
 
-        # Primer click
         await page.mouse.click(box['x'], box['y'])
         await page.wait_for_timeout(1500)
-
-        # Segundo click para abrir la conversacion
         await page.mouse.click(box['x'], box['y'])
         await page.wait_for_timeout(4000)
 
-        # Scroll progresivo en panel derecho
         for scroll_pos in [400, 800, 1200]:
             await page.evaluate("""
                 (pos) => {
@@ -149,7 +146,6 @@ async def get_adid_from_meta(page, name):
         print("  ERROR " + name + " -> " + str(e))
         return None
 
-# ── MAIN ───────────────────────────────────────────────────
 async def main():
     print("Obteniendo contactos Meta Ads sin ad_id...")
     contacts = get_contacts_without_adid()
