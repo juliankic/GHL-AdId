@@ -14,7 +14,7 @@ AD_ID_FIELD_ID = "yDJQa5wnMZBKQRjvvIuA"
 def get_contacts_without_adid():
     base_url = "https://services.leadconnectorhq.com/contacts/"
     headers = {
-        "Authorization": f"Bearer {GHL_TOKEN}",
+        "Authorization": "Bearer " + GHL_TOKEN,
         "Version": "2021-07-28"
     }
     all_contacts = []
@@ -101,9 +101,7 @@ async def get_adid_from_meta(page, name):
                     return {
                         x: rect.x + rect.width / 2,
                         y: rect.y + rect.height / 2,
-                        text: match.textContent.trim(),
-                        width: rect.width,
-                        height: rect.height
+                        text: match.textContent.trim()
                     };
                 }
                 return null;
@@ -116,9 +114,15 @@ async def get_adid_from_meta(page, name):
 
         print("  DEBUG click en: '" + str(box['text']) + "' coords=(" + str(round(box['x'])) + ", " + str(round(box['y'])) + ")")
 
+        # Primer click
+        await page.mouse.click(box['x'], box['y'])
+        await page.wait_for_timeout(1500)
+
+        # Segundo click para abrir la conversacion
         await page.mouse.click(box['x'], box['y'])
         await page.wait_for_timeout(4000)
 
+        # Scroll progresivo en panel derecho
         for scroll_pos in [400, 800, 1200]:
             await page.evaluate("""
                 (pos) => {
