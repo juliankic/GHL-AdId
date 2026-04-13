@@ -78,16 +78,18 @@ def save_adid_to_ghl(contact_id, ad_id):
 async def get_adid_from_meta(page, name):
     try:
         await page.goto(META_BS_URL, wait_until="domcontentloaded")
-        await page.wait_for_timeout(3000)
+        await page.wait_for_timeout(4000)
 
         # Limpiar y buscar
         search = page.locator('input[placeholder*="Search"], input[type="search"]').first
         await search.click()
         await search.clear()
         await search.fill(name)
-        await page.wait_for_timeout(2500)
 
-        # DEBUG: ver qué elementos encuentra después de buscar
+        # Esperar a que aparezcan resultados — hasta 6 segundos
+        await page.wait_for_timeout(4000)
+
+        # DEBUG: ver cuántos elementos con el nombre aparecen ahora
         debug_info = await page.evaluate(f"""
             () => {{
                 const name = "{name}";
@@ -97,45 +99,55 @@ async def get_adid_from_meta(page, name):
                     el.textContent.trim().toLowerCase() === nameLower &&
                     el.children.length === 0
                 );
+                // También buscar coincidencias parciales
+                const partial = allDivs.filter(el =>
+                    el.children.length === 0 &&
+                    el.textContent.trim().toLowerCase().includes(nameLower.split(' ')[0])
+                ).slice(0, 3);
                 return {{
-                    count: matches.length,
-                    first_class: matches[0]?.className || 'none',
-                    first_tag: matches[0]?.tagName || 'none',
-                    first_parent_class: matches[0]?.parentElement?.className || 'none'
+                    exact_count: matches.length,
+                    exact_class: matches[0]?.className || 'none',
+                    partial_count: partial.length,
+                    partial_texts: partial.map(el => el.textContent.trim().substring(0, 30))
                 }};
             }}
         """)
-        print(f"  DEBUG {name}: encontrados={debug_info['count']} clase={debug_info['first_class'][:60]}")
+        print(f"  DEBUG {name}: exactos={debug_info['exact_count']} parciales={debug_info['partial_count']}")
+        print(f"  DEBUG textos parciales: {debug_info['partial_texts']}")
 
-        # Click via JavaScript
+        # Intentar click en coincidencia exacta
         clicked = await page.evaluate(f"""
             () => {{
-                const name = "{name}";
-                const nameLower = name.toLowerCase();
+                const nameLower = "{name}".toLowerCase();
                 const allDivs = Array.from(document.querySelectorAll('div'));
-                const match = allDivs.find(el =>
-                    el.textContent.trim().toLowerCase() === nameLower &&
-                    el.children.length === 0
+
+                // Buscar exacto sin hijos
+                const exact = allDivs.find(el =>
+                    el.children.length === 0 &&
+                    el.textContent.trim().toLowerCase() === nameLower
                 );
-                if (match) {{
-                    match.click();
-                    return true;
-                }}
-                const listItems = Array.from(document.querySelectorAll('div[role="row"], li, a'));
-                const item = listItems.find(el => el.textContent.toLowerCase().includes(nameLower));
-                if (item) {{
-                    item.click();
-                    return true;
-                }}
-                return false;
+                if (exact) {{ exact.click(); return 'exact'; }}
+
+                // Buscar por primer nombre
+                const firstName = nameLower.split(' ')[0];
+                const partial = allDivs.find(el =>
+                    el.children.length === 0 &&
+                    el.textContent.trim().toLowerCase().startsWith(firstName)
+                );
+                if (partial) {{ partial.click(); return 'partial'; }}
+
+                return 'none';
             }}
         """)
 
-        if not clicked:
+        print(f"  DEBUG click resultado: {clicked}")
+
+        if clicked == 'none':
             print(f"  ✗ {name} → no encontrado en Meta BS")
             return None
 
-        await page.wait_for_timeout(3000)
+        # Esperar que cargue la conversación
+        await page.wait_for_timeout(4000)
 
         # Scroll progresivo en panel derecho
         for scroll_pos in [400, 800, 1200]:
@@ -143,7 +155,7 @@ async def get_adid_from_meta(page, name):
                 const panels = document.querySelectorAll('[role="complementary"]');
                 panels.forEach(p => p.scrollTop = {scroll_pos});
             """)
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(1200)
 
             try:
                 html = await page.locator('[role="complementary"]').last.inner_html(timeout=2000)
