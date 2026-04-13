@@ -82,66 +82,53 @@ async def get_adid_from_meta(page, name):
         await search.fill(name)
         await page.wait_for_timeout(4000)
 
-        first_name = name.split()[0].lower()
-
-        box = await page.evaluate("""
-            (firstName) => {
+        # Leer el HTML del panel izquierdo despues de buscar
+        # El label ad_id ya es visible en la lista sin necesidad de abrir la conversacion
+        left_panel_html = await page.evaluate("""
+            () => {
                 const allDivs = Array.from(document.querySelectorAll('div'));
-                const candidates = allDivs.filter(el => {
-                    if (el.children.length !== 0) return false;
-                    const text = el.textContent.trim().toLowerCase();
-                    if (!text.includes(firstName)) return false;
-                    if (text.includes('.')) return false;
-                    if (text.includes('@')) return false;
-                    if (text.length > 40) return false;
+                const leftPanel = allDivs.find(el => {
                     const rect = el.getBoundingClientRect();
-                    if (rect.width < 50 || rect.width > 400) return false;
-                    if (rect.x > 450) return false;
-                    if (rect.y < 100) return false;
-                    return true;
+                    return rect.x < 50 && rect.width > 200 && rect.height > 400;
                 });
-                if (candidates.length === 0) return null;
-                const match = candidates[0];
-                const rect = match.getBoundingClientRect();
-                return {
-                    x: rect.x + rect.width / 2,
-                    y: rect.y + rect.height / 2,
-                    text: match.textContent.trim()
-                };
+                return leftPanel ? leftPanel.innerHTML : document.body.innerHTML;
             }
-        """, first_name)
+        """)
 
-        if not box:
-            print("  X " + name + " -> no encontrado en Meta BS")
-            return None
+        matches = re.findall(r'ad_id\.(\d+)', left_panel_html)
+        if matches:
+            ad_id = matches[0]
+            print("  OK " + name + " -> " + ad_id + " (desde lista)")
+            return ad_id
 
-        print("  DEBUG click en: '" + str(box['text']) + "' coords=(" + str(round(box['x'])) + ", " + str(round(box['y'])) + ")")
+        # Fallback: hover sobre el label ad_id visible y leer tooltip
+        try:
+            ad_label = page.locator('text=/ad_id\\.\\d+/').first
+            label_text = await ad_label.inner_text(timeout=3000)
+            matches = re.findall(r'ad_id\.(\d+)', label_text)
+            if matches:
+                ad_id = matches[0]
+                print("  OK " + name + " -> " + ad_id + " (desde label visible)")
+                return ad_id
+        except:
+            pass
 
-        await page.mouse.click(box['x'], box['y'])
-        await page.wait_for_timeout(1500)
-        await page.mouse.click(box['x'], box['y'])
-        await page.wait_for_timeout(4000)
+        # Fallback: mover cursor encima del icono ad_id para que aparezca el tooltip
+        try:
+            ad_icon = page.locator('[aria-label*="ad_id"], text="ad_id...."').first
+            await ad_icon.hover(timeout=3000)
+            await page.wait_for_timeout(1500)
+            tooltip_html = await page.content()
+            matches = re.findall(r'ad_id\.(\d+)', tooltip_html)
+            unique = list(dict.fromkeys(matches))
+            if unique:
+                ad_id = unique[0]
+                print("  OK " + name + " -> " + ad_id + " (desde tooltip)")
+                return ad_id
+        except:
+            pass
 
-        for scroll_pos in [400, 800, 1200]:
-            await page.evaluate("""
-                (pos) => {
-                    const panels = document.querySelectorAll('[role="complementary"]');
-                    panels.forEach(p => p.scrollTop = pos);
-                }
-            """, scroll_pos)
-            await page.wait_for_timeout(1200)
-
-            try:
-                html = await page.locator('[role="complementary"]').last.inner_html(timeout=2000)
-                matches = re.findall(r'ad_id\.(\d+)', html)
-                if matches:
-                    ad_id = matches[0]
-                    print("  OK " + name + " -> " + ad_id)
-                    return ad_id
-            except:
-                pass
-
-        print("  X " + name + " -> sin ad_id en Labels")
+        print("  X " + name + " -> sin ad_id encontrado")
         return None
 
     except Exception as e:
