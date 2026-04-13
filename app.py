@@ -10,17 +10,16 @@ async def get_adid_from_meta(page, name):
         await search.fill(name)
         await page.wait_for_timeout(2500)
 
-        # Click en el primer resultado que aparezca (sin importar mayúsculas)
+        # Click usando la clase exacta del div del nombre
         try:
-            # Buscar por nombre parcial case-insensitive en la lista
-            first_result = page.locator(f'[role="option"]:first-child, ul li:first-child, [data-testid*="conversation"]:first-child').first
-            await first_result.click(timeout=5000)
+            result = page.locator('div.x1n2onr6.xozqiw3.x14atkfc.xt7fyl5.x78zum5.x1iyjqo2.xdj266r').first
+            await result.click(timeout=5000)
             await page.wait_for_timeout(3000)
         except:
             try:
-                # Fallback: click en cualquier elemento que contenga el primer nombre
-                first_name = name.split()[0].lower()
-                result = page.locator(f'text=/(?i){first_name}/').first
+                # Fallback: buscar por texto parcial case-insensitive
+                first_name = name.split()[0]
+                result = page.get_by_text(first_name, exact=False).first
                 await result.click(timeout=5000)
                 await page.wait_for_timeout(3000)
             except:
@@ -28,16 +27,16 @@ async def get_adid_from_meta(page, name):
                 return None
 
         # Scroll down panel derecho para cargar Labels
-        await page.keyboard.press("Tab")
         await page.evaluate("""
-            const panels = document.querySelectorAll('[role="complementary"], [data-pagelet="rightRail"]');
+            const panels = document.querySelectorAll('[role="complementary"]');
             panels.forEach(p => p.scrollTop = 600);
         """)
         await page.wait_for_timeout(2000)
 
         # Leer Labels del panel derecho
         try:
-            labels_html = await page.locator('text="Labels"').locator('xpath=../../..').inner_html(timeout=3000)
+            labels_container = page.locator('text="Labels"').locator('xpath=../../..')
+            labels_html = await labels_container.inner_html(timeout=3000)
             matches = re.findall(r'ad_id\.(\d+)', labels_html)
             if matches:
                 ad_id = matches[0]
@@ -46,10 +45,11 @@ async def get_adid_from_meta(page, name):
         except:
             pass
 
-        # Fallback: buscar ad_id en cualquier elemento del panel derecho
+        # Fallback: buscar en panel derecho completo
         try:
-            page_text = await page.locator('[role="complementary"]').last.inner_text(timeout=3000)
-            matches = re.findall(r'ad_id\.(\d+)', page_text)
+            right_panel = page.locator('[role="complementary"]').last
+            panel_text = await right_panel.inner_text(timeout=3000)
+            matches = re.findall(r'ad_id\.(\d+)', panel_text)
             if matches:
                 ad_id = matches[0]
                 print(f"  ✓ {name} → {ad_id} (fallback)")
