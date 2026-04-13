@@ -3,7 +3,7 @@ import requests
 import re
 from playwright.async_api import async_playwright
 
-# ── CONFIGURACIÓN ──────────────────────────────────────────
+# ── CONFIGURACION ──────────────────────────────────────────
 GHL_TOKEN = "pit-08166086-17f2-4dcc-88d2-8f065adae15c"
 GHL_LOCATION_ID = "6VJ6jJ4IxhkiJLzHZUcx"
 META_BS_URL = "https://business.facebook.com/latest/inbox/messenger"
@@ -33,7 +33,7 @@ def get_contacts_without_adid():
         if not contacts:
             break
         all_contacts.extend(contacts)
-        print(f"  Obtenidos: {len(all_contacts)} contactos...")
+        print("  Obtenidos: " + str(len(all_contacts)) + " contactos...")
 
         meta = data.get("meta", {})
         if not meta.get("nextPage"):
@@ -56,17 +56,17 @@ def get_contacts_without_adid():
         if is_meta_ads and not has_adid:
             without_adid.append({
                 "id": c["id"],
-                "name": f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()
+                "name": (c.get("firstName", "") + " " + c.get("lastName", "")).strip()
             })
 
-    print(f"Total: {len(all_contacts)} | Meta Ads sin ad_id: {len(without_adid)}")
+    print("Total: " + str(len(all_contacts)) + " | Meta Ads sin ad_id: " + str(len(without_adid)))
     return without_adid
 
 # ── GHL: guardar ad_id ─────────────────────────────────────
 def save_adid_to_ghl(contact_id, ad_id):
-    url = f"https://services.leadconnectorhq.com/contacts/{contact_id}"
+    url = "https://services.leadconnectorhq.com/contacts/" + contact_id
     headers = {
-        "Authorization": f"Bearer {GHL_TOKEN}",
+        "Authorization": "Bearer " + GHL_TOKEN,
         "Version": "2021-07-28",
         "Content-Type": "application/json"
     }
@@ -80,57 +80,52 @@ async def get_adid_from_meta(page, name):
         await page.goto(META_BS_URL, wait_until="domcontentloaded")
         await page.wait_for_timeout(4000)
 
-        # Escribir nombre en search
         search = page.locator('input[placeholder*="Search"], input[type="search"]').first
         await search.click()
         await search.clear()
         await search.fill(name)
         await page.wait_for_timeout(4000)
 
-        # Obtener coordenadas del primer resultado visible en la lista
-        box = await page.evaluate(f"""
-            () => {{
-                const nameLower = "{name}".toLowerCase();
-                const firstName = nameLower.split(' ')[0];
-                const allDivs = Array.from(document.querySelectorAll('div'));
+        first_name = name.split()[0].lower()
 
-                // Buscar div hoja que contenga el nombre
+        box = await page.evaluate("""
+            (firstName) => {
+                const allDivs = Array.from(document.querySelectorAll('div'));
                 const match = allDivs.find(el =>
                     el.children.length === 0 &&
                     el.textContent.trim().toLowerCase().includes(firstName) &&
                     el.getBoundingClientRect().width > 50
                 );
-
-                if (match) {{
+                if (match) {
                     const rect = match.getBoundingClientRect();
-                    return {{
+                    return {
                         x: rect.x + rect.width / 2,
                         y: rect.y + rect.height / 2,
                         text: match.textContent.trim(),
                         width: rect.width,
                         height: rect.height
-                    }};
-                }}
+                    };
+                }
                 return null;
-            }}
-        """)
+            }
+        """, first_name)
 
         if not box:
-            print(f"  ✗ {name} → no encontrado en Meta BS")
+            print("  X " + name + " -> no encontrado en Meta BS")
             return None
 
-        print(f"  DEBUG click en: '{box['text']}' coords=({box['x']:.0f}, {box['y']:.0f})")
+        print("  DEBUG click en: '" + str(box['text']) + "' coords=(" + str(round(box['x'])) + ", " + str(round(box['y'])) + ")")
 
-        # Click en coordenadas reales
         await page.mouse.click(box['x'], box['y'])
         await page.wait_for_timeout(4000)
 
-        # Scroll progresivo en panel derecho
         for scroll_pos in [400, 800, 1200]:
-            await page.evaluate(f"""
-                const panels = document.querySelectorAll('[role="complementary"]');
-                panels.forEach(p => p.scrollTop = {scroll_pos});
-            """)
+            await page.evaluate("""
+                (pos) => {
+                    const panels = document.querySelectorAll('[role="complementary"]');
+                    panels.forEach(p => p.scrollTop = pos);
+                }
+            """, scroll_pos)
             await page.wait_for_timeout(1200)
 
             try:
@@ -138,23 +133,23 @@ async def get_adid_from_meta(page, name):
                 matches = re.findall(r'ad_id\.(\d+)', html)
                 if matches:
                     ad_id = matches[0]
-                    print(f"  ✓ {name} → {ad_id}")
+                    print("  OK " + name + " -> " + ad_id)
                     return ad_id
             except:
                 pass
 
-        print(f"  ✗ {name} → sin ad_id en Labels")
+        print("  X " + name + " -> sin ad_id en Labels")
         return None
 
     except Exception as e:
-        print(f"  ⚠ {name} → error: {e}")
+        print("  ERROR " + name + " -> " + str(e))
         return None
 
 # ── MAIN ───────────────────────────────────────────────────
 async def main():
     print("Obteniendo contactos Meta Ads sin ad_id...")
     contacts = get_contacts_without_adid()
-    print(f"Total a procesar: {len(contacts)}\n")
+    print("Total a procesar: " + str(len(contacts)))
 
     if not contacts:
         print("No hay contactos para procesar.")
@@ -173,16 +168,16 @@ async def main():
         for contact in contacts:
             name = contact["name"]
             contact_id = contact["id"]
-            print(f"Procesando: {name}")
+            print("Procesando: " + name)
             ad_id = await get_adid_from_meta(page, name)
             if ad_id:
                 status = save_adid_to_ghl(contact_id, ad_id)
-                print(f"  → Guardado en GHL (status {status})")
+                print("  -> Guardado en GHL (status " + str(status) + ")")
             await page.wait_for_timeout(1000)
 
         await browser.close()
 
-    print("\n✅ Proceso completado")
+    print("Proceso completado")
 
 if __name__ == "__main__":
     asyncio.run(main())
