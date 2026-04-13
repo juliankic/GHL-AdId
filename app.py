@@ -80,73 +80,49 @@ async def get_adid_from_meta(page, name):
         await page.goto(META_BS_URL, wait_until="domcontentloaded")
         await page.wait_for_timeout(4000)
 
-        # Limpiar y buscar
+        # Escribir nombre en search
         search = page.locator('input[placeholder*="Search"], input[type="search"]').first
         await search.click()
         await search.clear()
         await search.fill(name)
-
-        # Esperar a que aparezcan resultados — hasta 6 segundos
         await page.wait_for_timeout(4000)
 
-        # DEBUG: ver cuántos elementos con el nombre aparecen ahora
-        debug_info = await page.evaluate(f"""
-            () => {{
-                const name = "{name}";
-                const nameLower = name.toLowerCase();
-                const allDivs = Array.from(document.querySelectorAll('div'));
-                const matches = allDivs.filter(el =>
-                    el.textContent.trim().toLowerCase() === nameLower &&
-                    el.children.length === 0
-                );
-                // También buscar coincidencias parciales
-                const partial = allDivs.filter(el =>
-                    el.children.length === 0 &&
-                    el.textContent.trim().toLowerCase().includes(nameLower.split(' ')[0])
-                ).slice(0, 3);
-                return {{
-                    exact_count: matches.length,
-                    exact_class: matches[0]?.className || 'none',
-                    partial_count: partial.length,
-                    partial_texts: partial.map(el => el.textContent.trim().substring(0, 30))
-                }};
-            }}
-        """)
-        print(f"  DEBUG {name}: exactos={debug_info['exact_count']} parciales={debug_info['partial_count']}")
-        print(f"  DEBUG textos parciales: {debug_info['partial_texts']}")
-
-        # Intentar click en coincidencia exacta
-        clicked = await page.evaluate(f"""
+        # Obtener coordenadas del primer resultado visible en la lista
+        box = await page.evaluate(f"""
             () => {{
                 const nameLower = "{name}".toLowerCase();
+                const firstName = nameLower.split(' ')[0];
                 const allDivs = Array.from(document.querySelectorAll('div'));
 
-                // Buscar exacto sin hijos
-                const exact = allDivs.find(el =>
+                // Buscar div hoja que contenga el nombre
+                const match = allDivs.find(el =>
                     el.children.length === 0 &&
-                    el.textContent.trim().toLowerCase() === nameLower
+                    el.textContent.trim().toLowerCase().includes(firstName) &&
+                    el.getBoundingClientRect().width > 50
                 );
-                if (exact) {{ exact.click(); return 'exact'; }}
 
-                // Buscar por primer nombre
-                const firstName = nameLower.split(' ')[0];
-                const partial = allDivs.find(el =>
-                    el.children.length === 0 &&
-                    el.textContent.trim().toLowerCase().startsWith(firstName)
-                );
-                if (partial) {{ partial.click(); return 'partial'; }}
-
-                return 'none';
+                if (match) {{
+                    const rect = match.getBoundingClientRect();
+                    return {{
+                        x: rect.x + rect.width / 2,
+                        y: rect.y + rect.height / 2,
+                        text: match.textContent.trim(),
+                        width: rect.width,
+                        height: rect.height
+                    }};
+                }}
+                return null;
             }}
         """)
 
-        print(f"  DEBUG click resultado: {clicked}")
-
-        if clicked == 'none':
+        if not box:
             print(f"  ✗ {name} → no encontrado en Meta BS")
             return None
 
-        # Esperar que cargue la conversación
+        print(f"  DEBUG click en: '{box['text']}' coords=({box['x']:.0f}, {box['y']:.0f})")
+
+        # Click en coordenadas reales
+        await page.mouse.click(box['x'], box['y'])
         await page.wait_for_timeout(4000)
 
         # Scroll progresivo en panel derecho
@@ -197,16 +173,4 @@ async def main():
         for contact in contacts:
             name = contact["name"]
             contact_id = contact["id"]
-            print(f"Procesando: {name}")
-            ad_id = await get_adid_from_meta(page, name)
-            if ad_id:
-                status = save_adid_to_ghl(contact_id, ad_id)
-                print(f"  → Guardado en GHL (status {status})")
-            await page.wait_for_timeout(1000)
-
-        await browser.close()
-
-    print("\n✅ Proceso completado")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            print(f"Proc
