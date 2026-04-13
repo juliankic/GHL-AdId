@@ -87,14 +87,33 @@ async def get_adid_from_meta(page, name):
         await search.fill(name)
         await page.wait_for_timeout(2500)
 
-        # Click via JavaScript buscando por texto exacto del nombre
+        # DEBUG: ver qué elementos encuentra después de buscar
+        debug_info = await page.evaluate(f"""
+            () => {{
+                const name = "{name}";
+                const nameLower = name.toLowerCase();
+                const allDivs = Array.from(document.querySelectorAll('div'));
+                const matches = allDivs.filter(el =>
+                    el.textContent.trim().toLowerCase() === nameLower &&
+                    el.children.length === 0
+                );
+                return {{
+                    count: matches.length,
+                    first_class: matches[0]?.className || 'none',
+                    first_tag: matches[0]?.tagName || 'none',
+                    first_parent_class: matches[0]?.parentElement?.className || 'none'
+                }};
+            }}
+        """)
+        print(f"  DEBUG {name}: encontrados={debug_info['count']} clase={debug_info['first_class'][:60]}")
+
+        # Click via JavaScript
         clicked = await page.evaluate(f"""
             () => {{
                 const name = "{name}";
                 const nameLower = name.toLowerCase();
-                // Buscar todos los divs que contengan exactamente el nombre
                 const allDivs = Array.from(document.querySelectorAll('div'));
-                const match = allDivs.find(el => 
+                const match = allDivs.find(el =>
                     el.textContent.trim().toLowerCase() === nameLower &&
                     el.children.length === 0
                 );
@@ -102,7 +121,6 @@ async def get_adid_from_meta(page, name):
                     match.click();
                     return true;
                 }}
-                // Fallback: buscar coincidencia parcial en lista de conversaciones
                 const listItems = Array.from(document.querySelectorAll('div[role="row"], li, a'));
                 const item = listItems.find(el => el.textContent.toLowerCase().includes(nameLower));
                 if (item) {{
@@ -127,7 +145,6 @@ async def get_adid_from_meta(page, name):
             """)
             await page.wait_for_timeout(1000)
 
-            # Intentar leer Labels en esta posición
             try:
                 html = await page.locator('[role="complementary"]').last.inner_html(timeout=2000)
                 matches = re.findall(r'ad_id\.(\d+)', html)
