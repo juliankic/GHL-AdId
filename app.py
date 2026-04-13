@@ -74,12 +74,13 @@ def save_adid_to_ghl(contact_id, ad_id):
     response = requests.put(url, headers=headers, json=payload)
     return response.status_code
 
-# ── META BS: buscar ad_id por nombre (FIXED) ───────────────
+# ── META BS: buscar ad_id en panel derecho Labels ──────────
 async def get_adid_from_meta(page, name):
     try:
         await page.goto(META_BS_URL, wait_until="domcontentloaded")
         await page.wait_for_timeout(3000)
 
+        # Buscar contacto
         search = page.locator('input[placeholder*="Search"], input[type="search"]').first
         await search.click()
         await search.fill(name)
@@ -93,25 +94,45 @@ async def get_adid_from_meta(page, name):
             print(f"  ✗ {name} → no encontrado en Meta BS")
             return None
 
-        # Leer SOLO el panel derecho de la conversación abierta
+        # Scroll down en el panel derecho para que carguen los Labels
         try:
-            panel = page.locator('[role="main"], [data-testid="conversation-view"], .x1n2onr6').last
-            panel_html = await panel.inner_html()
+            right_panel = page.locator('[data-pagelet="rightRail"], [role="complementary"]').first
+            await right_panel.evaluate("el => el.scrollTo(0, 500)")
+            await page.wait_for_timeout(1500)
         except:
-            # Fallback: HTML completo pero tomar el ÚLTIMO ad_id (panel activo)
-            panel_html = await page.content()
+            # Fallback: scroll general de la página
+            await page.evaluate("window.scrollTo(0, 500)")
+            await page.wait_for_timeout(1500)
 
-        matches = re.findall(r'ad_id\.(\d+)', panel_html)
-        unique = list(dict.fromkeys(matches))
+        # Buscar el label ad_id en el panel derecho SOLAMENTE
+        try:
+            # Localizar la sección Labels y leer su texto
+            labels_section = page.locator('text="Labels"').first
+            # Obtener el contenedor padre de Labels
+            labels_container = labels_section.locator('xpath=../..') 
+            labels_html = await labels_container.inner_html()
+            matches = re.findall(r'ad_id\.(\d+)', labels_html)
+            if matches:
+                ad_id = matches[0]
+                print(f"  ✓ {name} → {ad_id} (desde Labels)")
+                return ad_id
+        except:
+            pass
 
-        if unique:
-            # Tomar el último match — corresponde al panel activo
-            ad_id = unique[-1]
-            print(f"  ✓ {name} → {ad_id}")
-            return ad_id
-        else:
-            print(f"  ✗ {name} → sin ad_id")
-            return None
+        # Fallback: buscar el elemento visual ad_id.... en el panel derecho
+        try:
+            ad_label = page.locator('[aria-label*="ad_id"], text=/ad_id\\.\\d+/').first
+            label_text = await ad_label.inner_text(timeout=3000)
+            matches = re.findall(r'ad_id\.(\d+)', label_text)
+            if matches:
+                ad_id = matches[0]
+                print(f"  ✓ {name} → {ad_id} (desde label visual)")
+                return ad_id
+        except:
+            pass
+
+        print(f"  ✗ {name} → sin ad_id en Labels")
+        return None
 
     except Exception as e:
         print(f"  ⚠ {name} → error: {e}")
