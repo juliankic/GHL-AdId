@@ -173,4 +173,16 @@ async def main():
         for contact in contacts:
             name = contact["name"]
             contact_id = contact["id"]
-            print(f"Proc
+            print(f"Procesando: {name}")
+            ad_id = await get_adid_from_meta(page, name)
+            if ad_id:
+                status = save_adid_to_ghl(contact_id, ad_id)
+                print(f"  → Guardado en GHL (status {status})")
+            await page.wait_for_timeout(1000)
+
+        await browser.close()
+
+    print("\n✅ Proceso completado")
+
+if __name__ == "__main__":
+    asyncio.run(main())
