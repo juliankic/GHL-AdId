@@ -3,7 +3,6 @@ import requests
 import re
 from playwright.async_api import async_playwright
 
-# ── CONFIGURACION ──────────────────────────────────────────
 GHL_TOKEN = "pit-08166086-17f2-4dcc-88d2-8f065adae15c"
 GHL_LOCATION_ID = "6VJ6jJ4IxhkiJLzHZUcx"
 META_BS_URL = "https://business.facebook.com/latest/inbox/messenger"
@@ -92,6 +91,9 @@ async def get_adid_from_meta(page, name):
                     if (el.children.length !== 0) return false;
                     const text = el.textContent.trim().toLowerCase();
                     if (!text.includes(firstName)) return false;
+                    if (text.includes('.')) return false;
+                    if (text.includes('@')) return false;
+                    if (text.length > 40) return false;
                     const rect = el.getBoundingClientRect();
                     if (rect.width < 50 || rect.width > 400) return false;
                     if (rect.x > 450) return false;
