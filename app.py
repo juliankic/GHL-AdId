@@ -74,7 +74,7 @@ def save_adid_to_ghl(contact_id, ad_id):
     response = requests.put(url, headers=headers, json=payload)
     return response.status_code
 
-# ── META BS: buscar ad_id por nombre ──────────────────────
+# ── META BS: buscar ad_id por nombre (FIXED) ───────────────
 async def get_adid_from_meta(page, name):
     try:
         await page.goto(META_BS_URL, wait_until="domcontentloaded")
@@ -85,7 +85,6 @@ async def get_adid_from_meta(page, name):
         await search.fill(name)
         await page.wait_for_timeout(2000)
 
-        # Solo buscar coincidencia exacta del nombre completo
         try:
             person = page.locator(f'text="{name}"').first
             await person.click(timeout=5000)
@@ -94,16 +93,26 @@ async def get_adid_from_meta(page, name):
             print(f"  ✗ {name} → no encontrado en Meta BS")
             return None
 
-        html = await page.content()
-        matches = re.findall(r'ad_id\.(\d+)', html)
+        # Leer SOLO el panel derecho de la conversación abierta
+        try:
+            panel = page.locator('[role="main"], [data-testid="conversation-view"], .x1n2onr6').last
+            panel_html = await panel.inner_html()
+        except:
+            # Fallback: HTML completo pero tomar el ÚLTIMO ad_id (panel activo)
+            panel_html = await page.content()
+
+        matches = re.findall(r'ad_id\.(\d+)', panel_html)
         unique = list(dict.fromkeys(matches))
 
         if unique:
-            print(f"  ✓ {name} → {unique[0]}")
-            return unique[0]
+            # Tomar el último match — corresponde al panel activo
+            ad_id = unique[-1]
+            print(f"  ✓ {name} → {ad_id}")
+            return ad_id
         else:
             print(f"  ✗ {name} → sin ad_id")
             return None
+
     except Exception as e:
         print(f"  ⚠ {name} → error: {e}")
         return None
